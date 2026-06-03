@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nevada County Election Results — June 2026 Primary</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          animation: {
+            'bar-grow': 'barGrow 0.6s ease-out forwards',
+            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          },
+          keyframes: {
+            barGrow: {
+              from: { width: '0%' },
+              to: { width: 'var(--bar-width)' }
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .bar-fill {
+      transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .winner-glow {
+      box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.4);
+    }
+    .threshold-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: rgba(0,0,0,0.4);
+      z-index: 10;
+    }
+    .threshold-line::after {
+      content: attr(data-label);
+      position: absolute;
+      top: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      font-weight: 600;
+      color: #374151;
+      white-space: nowrap;
+    }
+    @media (max-width: 640px) {
+      .contest-grid { grid-template-columns: 1fr !important; }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+<!-- Header -->
+<header class="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+  <div class="max-w-7xl mx-auto px-4 py-3">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+      <div>
+        <h1 class="text-xl font-bold text-gray-900">Nevada County Election Results</h1>
+        <p class="text-sm text-gray-500">June 2026 California Statewide Primary</p>
+      </div>
+      <div class="flex items-center gap-3 text-sm text-gray-600">
+        <span id="last-updated" class="text-gray-400">Loading…</span>
+        <span class="text-gray-300">|</span>
+        <span id="countdown" class="font-mono text-blue-600 tabular-nums"></span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- Unofficial Banner -->
+<div id="unofficial-banner" class="bg-amber-500 text-white text-center py-2 px-4 font-bold tracking-wide text-sm hidden">
+  ⚠ UNOFFICIAL RESULTS — Final results not yet certified
+</div>
+<div id="official-banner" class="bg-green-600 text-white text-center py-2 px-4 font-bold tracking-wide text-sm hidden">
+  ✓ OFFICIAL RESULTS
+</div>
+
+<!-- Summary Strip -->
+<div id="summary-strip" class="bg-white border-b border-gray-200 hidden">
+  <div class="max-w-7xl mx-auto px-4 py-3">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div class="text-center">
+        <div id="stat-ballots" class="text-2xl font-bold text-gray-900">—</div>
+        <div class="text-xs text-gray-500 uppercase tracking-wide">Ballots Cast</div>
+      </div>
+      <div class="text-center">
+        <div id="stat-turnout" class="text-2xl font-bold text-gray-900">—</div>
+        <div class="text-xs text-gray-500 uppercase tracking-wide">Turnout</div>
+      </div>
+      <div class="text-center">
+        <div id="stat-vbm" class="text-2xl font-bold text-gray-900">—</div>
+        <div class="text-xs text-gray-500 uppercase tracking-wide">Vote by Mail</div>
+      </div>
+      <div class="text-center">
+        <div id="stat-inperson" class="text-2xl font-bold text-gray-900">—</div>
+        <div class="text-xs text-gray-500 uppercase tracking-wide">In Person</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Controls -->
+<div class="max-w-7xl mx-auto px-4 py-4">
+  <div class="flex flex-col sm:flex-row gap-3">
+    <div class="flex-1">
+      <input
+        id="search-input"
+        type="text"
+        placeholder="Search contests…"
+        class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+      />
+    </div>
+    <div class="flex gap-2 flex-wrap">
+      <button onclick="setFilter('all')" id="btn-all" class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white">All</button>
+      <button onclick="setFilter('Candidate')" id="btn-Candidate" class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50">Candidate Races</button>
+      <button onclick="setFilter('BallotMeasure')" id="btn-BallotMeasure" class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50">Ballot Measures</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main Content: sidebar + feed -->
+<div class="max-w-7xl mx-auto px-4 pb-12 flex gap-6 items-start">
+
+  <!-- Feed -->
+  <main class="flex-1 min-w-0">
+    <div id="loading-state" class="flex flex-col items-center justify-center py-24 text-gray-400">
+      <svg class="animate-spin h-8 w-8 mb-4 text-blue-500" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <p class="text-sm">Loading election results…</p>
+    </div>
+
+    <div id="error-state" class="hidden flex-col items-center justify-center py-24 text-red-400">
+      <svg class="h-8 w-8 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <p class="text-sm font-medium">Failed to load results</p>
+      <p id="error-message" class="text-xs mt-1 text-red-300"></p>
+      <button onclick="fetchData()" class="mt-4 px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm hover:bg-red-200">Retry</button>
+    </div>
+
+    <div id="empty-state" class="hidden flex-col items-center justify-center py-24 text-gray-400">
+      <p class="text-sm">No contests match your filter.</p>
+    </div>
+
+    <div id="results-container" class="hidden space-y-4"></div>
+  </main>
+
+  <!-- Floating sidebar nav -->
+  <aside id="race-nav" class="hidden lg:block w-52 flex-shrink-0 self-start sticky top-20">
+    <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <div class="px-3 py-2 border-b border-gray-100">
+        <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Jump to race</p>
+      </div>
+      <nav id="race-nav-links" class="flex flex-col py-1 max-h-[calc(100vh-8rem)] overflow-y-auto"></nav>
+    </div>
+  </aside>
+
+</div><!-- end flex wrapper -->
+
+<script>
+const API_URL = '/api/results';
+const POLL_INTERVAL = 60;
+
+let currentData = null;
+let currentFilter = 'all';
+let currentSearch = '';
+let countdownValue = POLL_INTERVAL;
+let countdownTimer = null;
+let pollTimer = null;
+
+// ── Fetch & poll ────────────────────────────────────────────────────────────
+
+async function fetchData() {
+  try {
+    const res = await fetch(API_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    currentData = data;
+    renderAll(data);
+    resetCountdown();
+    showState('results');
+  } catch (err) {
+    if (!currentData) showState('error');
+    const isFileProtocol = location.protocol === 'file:';
+    const msg = isFileProtocol
+      ? 'Open via a local server (not file://) — run: python3 -m http.server 8080 in the project folder, then visit http://localhost:8080'
+      : `${err.name}: ${err.message} | origin: ${location.origin}`;
+    document.getElementById('error-message').textContent = msg;
+  }
+}
+
+function resetCountdown() {
+  countdownValue = POLL_INTERVAL;
+  clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    countdownValue--;
+    updateCountdown();
+    if (countdownValue <= 0) {
+      clearInterval(countdownTimer);
+    }
+  }, 1000);
+}
+
+function updateCountdown() {
+  const el = document.getElementById('countdown');
+  if (el) el.textContent = `Refreshes in ${countdownValue}s`;
+}
+
+function startPolling() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(fetchData, POLL_INTERVAL * 1000);
+}
+
+// ── State display ────────────────────────────────────────────────────────────
+
+function showState(state) {
+  document.getElementById('loading-state').classList.toggle('hidden', state !== 'loading');
+  document.getElementById('loading-state').classList.toggle('flex', state === 'loading');
+  document.getElementById('error-state').classList.toggle('hidden', state !== 'error');
+  document.getElementById('error-state').classList.toggle('flex', state === 'error');
+  document.getElementById('empty-state').classList.toggle('hidden', state !== 'empty');
+  document.getElementById('empty-state').classList.toggle('flex', state === 'empty');
+  document.getElementById('results-container').classList.toggle('hidden', state !== 'results');
+}
+
+// ── Local vs statewide sort ───────────────────────────────────────────────────
+
+const STATEWIDE_KEYWORDS = [
+  'governor', 'lieutenant governor', 'secretary of state', 'controller',
+  'treasurer', 'attorney general', 'insurance commissioner', 'superintendent of public instruction',
+  'board of equalization', 'us senate', 'u.s. senate', 'united states senate',
+  'state controller', 'state treasurer', 'state attorney',
+];
+
+// Races that cross county lines but aren't statewide
+const REGIONAL_KEYWORDS = [
+  'representative', 'congress', 'house of representatives',
+  'state senate', 'state assembly', 'assembly district', 'senate district',
+  'judicial district', 'superior court', 'district attorney',
+];
+
+function contestSortKey(item) {
+  const name = (item.name?.[0]?.text || '').toLowerCase();
+  if (STATEWIDE_KEYWORDS.some(kw => name.includes(kw))) return 2;
+  if (REGIONAL_KEYWORDS.some(kw => name.includes(kw))) return 1;
+  return 0; // local
+}
+
+// ── Filter ───────────────────────────────────────────────────────────────────
+
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    const active = b.id === `btn-${f}`;
+    b.className = `filter-btn px-4 py-2 rounded-lg text-sm font-medium ${active ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`;
+  });
+  if (currentData) renderContests(currentData.ballotItems);
+}
+
+document.getElementById('search-input').addEventListener('input', e => {
+  currentSearch = e.target.value.toLowerCase();
+  if (currentData) renderContests(currentData.ballotItems);
+});
+
+// ── Render ───────────────────────────────────────────────────────────────────
+
+function renderAll(data) {
+  const { election, ballotItems } = data;
+
+  if (election.isOfficialResults) {
+    document.getElementById('unofficial-banner').classList.add('hidden');
+    document.getElementById('official-banner').classList.remove('hidden');
+  } else {
+    document.getElementById('unofficial-banner').classList.remove('hidden');
+    document.getElementById('official-banner').classList.add('hidden');
+  }
+
+  const lu = document.getElementById('last-updated');
+  if (election.lastUpdated) {
+    const d = new Date(election.lastUpdated);
+    lu.textContent = `Updated ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  renderSummary(election);
+  renderContests(ballotItems);
+}
+
+function renderSummary(election) {
+  const strip = document.getElementById('summary-strip');
+  const ballots = election.ballotsCast;
+  const voters = election.totalVoters;
+
+  if (ballots > 0 || voters > 0) {
+    strip.classList.remove('hidden');
+    document.getElementById('stat-ballots').textContent = ballots > 0 ? ballots.toLocaleString() : '—';
+    document.getElementById('stat-turnout').textContent = (ballots > 0 && voters > 0)
+      ? `${((ballots / voters) * 100).toFixed(1)}%` : '—';
+  }
+
+  const groups = election.groupReportingStatus || [];
+  const vbm = groups.find(g => g.groupName?.[0]?.text?.toLowerCase().includes('mail'));
+  const inperson = groups.find(g => g.groupName?.[0]?.text?.toLowerCase().includes('person'));
+
+  const statusLabel = s => {
+    if (!s) return '—';
+    const t = (s.reportingStatus || '').toLowerCase();
+    if (t.includes('fully')) return 'Fully Reported';
+    if (t.includes('partial')) return 'Partial';
+    if (t.includes('not')) return 'Not Started';
+    return s.reportingStatus || '—';
+  };
+
+  if (vbm || inperson) {
+    strip.classList.remove('hidden');
+    document.getElementById('stat-vbm').textContent = statusLabel(vbm);
+    document.getElementById('stat-inperson').textContent = statusLabel(inperson);
+  }
+}
+
+function contestAnchorId(item) {
+  return 'contest-' + (item.id || item.name?.[0]?.text || '').replace(/[^a-z0-9]/gi, '-').toLowerCase();
+}
+
+function renderContests(ballotItems) {
+  if (!ballotItems) return;
+
+  let items = [...ballotItems];
+
+  if (currentFilter !== 'all') {
+    items = items.filter(item => item.contestType === currentFilter);
+  }
+
+  if (currentSearch) {
+    items = items.filter(item =>
+      (item.name?.[0]?.text || '').toLowerCase().includes(currentSearch)
+    );
+  }
+
+  // Local races first, statewide last (stable sort preserves API order within each tier)
+  items.sort((a, b) => contestSortKey(a) - contestSortKey(b));
+
+  const container = document.getElementById('results-container');
+
+  if (items.length === 0) {
+    showState('empty');
+    document.getElementById('race-nav').classList.add('hidden');
+    return;
+  }
+
+  showState('results');
+  container.innerHTML = items.map(item => renderContest(item)).join('');
+  renderNav(items);
+}
+
+function renderNav(items) {
+  const nav = document.getElementById('race-nav');
+  const links = document.getElementById('race-nav-links');
+
+  let lastTier = null;
+  let html = '';
+  items.forEach(item => {
+    const name = item.name?.[0]?.text || 'Unknown';
+    const anchor = contestAnchorId(item);
+    const tier = contestSortKey(item); // 0=local, 1=regional, 2=statewide
+
+    if (lastTier !== null && tier !== lastTier) {
+      html += `<div class="mx-3 my-1 border-t border-gray-100"></div>`;
+    }
+    lastTier = tier;
+
+    const dot = tier === 0
+      ? '<span class="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0"></span>'
+      : tier === 1
+        ? '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></span>'
+        : '<span class="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0"></span>';
+    const textClass = tier === 0 ? 'text-gray-800 font-medium' : tier === 1 ? 'text-gray-700' : 'text-gray-500';
+
+    html += `<a href="#${anchor}" onclick="highlightNav(this)" class="nav-link group flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 transition-colors">
+      ${dot}
+      <span class="leading-tight ${textClass} group-hover:text-gray-900">${escHtml(name)}</span>
+    </a>`;
+  });
+
+  links.innerHTML = html;
+  nav.classList.remove('hidden');
+}
+
+function highlightNav(el) {
+  document.querySelectorAll('.nav-link').forEach(a => a.classList.remove('bg-blue-50'));
+  el.classList.add('bg-blue-50');
+}
+
+function renderContest(item) {
+  const name = item.name?.[0]?.text || 'Unknown Contest';
+  const isMeasure = item.contestType === 'BallotMeasure';
+  const options = item.summaryResults?.ballotOptions || [];
+  const totalVotes = item.voteTotal || options.reduce((s, o) => s + (o.voteCount || 0), 0);
+  const anchor = contestAnchorId(item);
+
+  const reporting = item.reportingStatus;
+  const units = reporting?.reportingUnits ?? 0;
+  const total = reporting?.totalUnits ?? 0;
+  const precinctText = total > 0
+    ? `${units} of ${total} precinct${total !== 1 ? 's' : ''} reporting`
+    : 'Precinct data unavailable';
+
+  const allReporting = total > 0 && units >= total;
+
+  // Sort candidates by vote count desc
+  const sorted = [...options].sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0));
+  const leaderId = sorted[0]?.id;
+
+  // Split visible vs hidden (zero-vote candidates)
+  const visible = sorted.filter(o => (o.voteCount || 0) > 0);
+  const hidden = sorted.filter(o => (o.voteCount || 0) === 0);
+
+  // Bond measure: 66.67% threshold
+  const referendumText = (item.referendum?.[0]?.text || '').toLowerCase();
+  const isBond = referendumText.includes('bond') || referendumText.includes('general obligation');
+  const threshold = isBond ? 66.67 : 50;
+
+  const renderBar = (opt) => {
+    const votes = opt.voteCount || 0;
+    const pct = totalVotes > 0 ? (votes / totalVotes * 100) : 0;
+    const isLeader = opt.id === leaderId && votes > 0;
+    const isWinner = opt.isWinner === true;
+    const color = opt.party?.color || '#6b7280';
+    const candidateName = opt.name?.[0]?.text || 'Unknown';
+
+    const winnerBadge = isWinner
+      ? `<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-800">✓ Winner</span>`
+      : '';
+    const leadBadge = (!isWinner && isLeader && sorted.length > 1)
+      ? `<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">Leading</span>`
+      : '';
+    const rowBg = isLeader ? 'bg-white rounded-lg p-3 border border-gray-100 shadow-sm' : 'bg-white rounded-lg p-3';
+
+    return `
+      <div class="${rowBg} mb-2 ${isWinner ? 'winner-glow border border-green-200' : ''}">
+        <div class="flex justify-between items-center mb-1.5">
+          <span class="text-sm font-medium text-gray-900 leading-tight">
+            ${escHtml(candidateName)}${winnerBadge}${leadBadge}
+          </span>
+          <span class="text-sm font-bold text-gray-700 ml-2 tabular-nums">${pct.toFixed(1)}%</span>
+        </div>
+        <div class="relative h-6 bg-gray-100 rounded-full overflow-hidden">
+          ${isMeasure && threshold === 66.67 ? `<div class="threshold-line" data-label="66.7%" style="left:${threshold}%"></div>` : isMeasure ? `<div class="threshold-line" data-label="50%" style="left:${threshold}%"></div>` : ''}
+          <div class="bar-fill h-full rounded-full" style="width:${pct}%;background-color:${color};"></div>
+        </div>
+        <div class="text-xs text-gray-500 mt-1">${votes.toLocaleString()} votes</div>
+      </div>
+    `;
+  };
+
+  const visibleBarsHtml = visible.map(renderBar).join('');
+
+  const hiddenSection = hidden.length > 0 ? `
+    <div class="hidden-candidates" id="more-${anchor}" style="display:none">
+      ${hidden.map(renderBar).join('')}
+    </div>
+    <button
+      onclick="toggleMore('${anchor}', this)"
+      class="mt-1 text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+    >
+      <span class="more-label">+ ${hidden.length} candidate${hidden.length !== 1 ? 's' : ''} with no votes</span>
+    </button>
+  ` : '';
+
+  const tier = contestSortKey(item);
+  const contestTypeTag = isMeasure
+    ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Measure</span>`
+    : tier === 0
+      ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">Local</span>`
+      : tier === 1
+        ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">Regional</span>`
+        : `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Statewide</span>`;
+
+  const reportingBadge = allReporting
+    ? `<span class="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">All precincts in</span>`
+    : `<span class="text-xs text-gray-500">${escHtml(precinctText)}</span>`;
+
+  return `
+    <div id="${anchor}" class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden scroll-mt-20">
+      <div class="px-4 pt-4 pb-3 border-b border-gray-100">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
+            ${contestTypeTag}
+            <h2 class="text-base font-bold text-gray-900">${escHtml(name)}</h2>
+          </div>
+          ${reportingBadge}
+        </div>
+        ${totalVotes > 0 ? `<p class="text-xs text-gray-400 mt-1">${totalVotes.toLocaleString()} total votes</p>` : ''}
+      </div>
+      <div class="px-4 py-4">
+        ${visibleBarsHtml || '<p class="text-sm text-gray-400">No votes reported yet</p>'}
+        ${hiddenSection}
+      </div>
+    </div>
+  `;
+}
+
+function toggleMore(anchor, btn) {
+  const section = document.getElementById('more-' + anchor);
+  const label = btn.querySelector('.more-label');
+  const hidden = section.style.display === 'none';
+  section.style.display = hidden ? 'block' : 'none';
+  const count = section.querySelectorAll('.mb-2').length;
+  label.textContent = hidden
+    ? `− Hide ${count} candidate${count !== 1 ? 's' : ''} with no votes`
+    : `+ ${count} candidate${count !== 1 ? 's' : ''} with no votes`;
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+
+showState('loading');
+fetchData();
+startPolling();
+updateCountdown();
+</script>
+</body>
+</html>
