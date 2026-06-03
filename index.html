@@ -128,7 +128,7 @@
 <div class="max-w-7xl mx-auto px-4 pb-12 flex gap-6 items-start">
 
   <!-- Feed -->
-  <main class="flex-1 min-w-0">
+  <main class="flex-1 min-w-0 pb-24 lg:pb-0">
     <div id="loading-state" class="flex flex-col items-center justify-center py-24 text-gray-400">
       <svg class="animate-spin h-8 w-8 mb-4 text-blue-500" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -164,6 +164,37 @@
   </aside>
 
 </div><!-- end flex wrapper -->
+
+<!-- Mobile: bottom sheet trigger (hidden on lg+) -->
+<div class="lg:hidden fixed bottom-0 inset-x-0 z-40 pb-safe">
+  <div class="bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-between shadow-lg">
+    <span class="text-xs text-gray-500 font-medium" id="mobile-nav-hint">Jump to a race</span>
+    <button onclick="openMobileNav()" class="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+      Races
+    </button>
+  </div>
+</div>
+
+<!-- Mobile: bottom sheet drawer -->
+<div id="mobile-nav-overlay" class="lg:hidden fixed inset-0 z-50 hidden" aria-modal="true">
+  <!-- backdrop -->
+  <div class="absolute inset-0 bg-black/40" onclick="closeMobileNav()"></div>
+  <!-- sheet -->
+  <div id="mobile-nav-sheet" class="absolute bottom-0 inset-x-0 bg-white rounded-t-2xl shadow-xl transform translate-y-full transition-transform duration-300 ease-out max-h-[75vh] flex flex-col">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      <p class="text-sm font-semibold text-gray-800">Jump to race</p>
+      <button onclick="closeMobileNav()" class="text-gray-400 hover:text-gray-600 p-1">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <nav id="race-nav-links-mobile" class="overflow-y-auto flex-1 py-2"></nav>
+  </div>
+</div>
 
 <script>
 const API_URL = '/api/results';
@@ -360,16 +391,13 @@ function renderContests(ballotItems) {
   renderNav(items);
 }
 
-function renderNav(items) {
-  const nav = document.getElementById('race-nav');
-  const links = document.getElementById('race-nav-links');
-
+function buildNavHtml(items, mobile) {
   let lastTier = null;
   let html = '';
   items.forEach(item => {
     const name = item.name?.[0]?.text || 'Unknown';
     const anchor = contestAnchorId(item);
-    const tier = contestSortKey(item); // 0=local, 1=regional, 2=statewide
+    const tier = contestSortKey(item);
 
     if (lastTier !== null && tier !== lastTier) {
       html += `<div class="mx-3 my-1 border-t border-gray-100"></div>`;
@@ -382,20 +410,50 @@ function renderNav(items) {
         ? '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></span>'
         : '<span class="w-1.5 h-1.5 rounded-full bg-gray-300 flex-shrink-0"></span>';
     const textClass = tier === 0 ? 'text-gray-800 font-medium' : tier === 1 ? 'text-gray-700' : 'text-gray-500';
+    const onclick = mobile ? `closeMobileNav(); highlightNav(this, 'mobile')` : `highlightNav(this, 'desktop')`;
+    const py = mobile ? 'py-3' : 'py-2';
+    const cls = `nav-link-${mobile ? 'mobile' : 'desktop'}`;
 
-    html += `<a href="#${anchor}" onclick="highlightNav(this)" class="nav-link group flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 transition-colors">
+    html += `<a href="#${anchor}" onclick="${onclick}" class="${cls} group flex items-center gap-2 px-4 ${py} text-sm hover:bg-gray-50 transition-colors">
       ${dot}
       <span class="leading-tight ${textClass} group-hover:text-gray-900">${escHtml(name)}</span>
     </a>`;
   });
-
-  links.innerHTML = html;
-  nav.classList.remove('hidden');
+  return html;
 }
 
-function highlightNav(el) {
-  document.querySelectorAll('.nav-link').forEach(a => a.classList.remove('bg-blue-50'));
+function renderNav(items) {
+  const nav = document.getElementById('race-nav');
+  document.getElementById('race-nav-links').innerHTML = buildNavHtml(items, false);
+  document.getElementById('race-nav-links-mobile').innerHTML = buildNavHtml(items, true);
+  nav.classList.remove('hidden');
+
+  const hint = document.getElementById('mobile-nav-hint');
+  if (hint) hint.textContent = `${items.length} race${items.length !== 1 ? 's' : ''}`;
+}
+
+function highlightNav(el, which) {
+  const cls = `nav-link-${which}`;
+  document.querySelectorAll(`.${cls}`).forEach(a => a.classList.remove('bg-blue-50'));
   el.classList.add('bg-blue-50');
+}
+
+function openMobileNav() {
+  const overlay = document.getElementById('mobile-nav-overlay');
+  const sheet = document.getElementById('mobile-nav-sheet');
+  overlay.classList.remove('hidden');
+  requestAnimationFrame(() => sheet.classList.remove('translate-y-full'));
+  document.body.style.overflow = 'hidden';
+}
+
+function closeMobileNav() {
+  const overlay = document.getElementById('mobile-nav-overlay');
+  const sheet = document.getElementById('mobile-nav-sheet');
+  sheet.classList.add('translate-y-full');
+  setTimeout(() => {
+    overlay.classList.add('hidden');
+    document.body.style.overflow = '';
+  }, 300);
 }
 
 function renderContest(item) {
