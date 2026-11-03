@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Nevada County Election Results — June 2026 Primary</title>
+  <title>Nevada County Election Results — November 2026 General</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -62,16 +62,21 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
       <div>
         <h1 class="text-xl font-bold text-gray-900">Nevada County Election Results</h1>
-        <p class="text-sm text-gray-500">June 2026 California Statewide Primary</p>
+        <p id="election-subtitle" class="text-sm text-gray-500">November 3, 2026 General Election</p>
       </div>
       <div class="flex items-center gap-3 text-sm text-gray-600">
         <span id="last-updated" class="text-gray-400">Loading…</span>
-        <span class="text-gray-300">|</span>
+        <span id="countdown-sep" class="text-gray-300">|</span>
         <span id="countdown" class="font-mono text-blue-600 tabular-nums"></span>
       </div>
     </div>
   </div>
 </header>
+
+<!-- Archive Banner -->
+<div id="archive-banner" class="bg-gray-800 text-white text-center py-2 px-4 text-sm hidden">
+  Viewing archived results · <a href="/" class="underline font-medium">Back to live results</a>
+</div>
 
 <!-- Unofficial Banner -->
 <div id="unofficial-banner" class="bg-amber-500 text-white text-center py-2 px-4 font-bold tracking-wide text-sm hidden">
@@ -150,7 +155,19 @@
       <p class="text-sm">No contests match your filter.</p>
     </div>
 
+    <div id="pending-state" class="hidden flex-col items-center justify-center py-16 px-4">
+      <div class="max-w-xl w-full bg-white border border-gray-200 rounded-xl shadow-sm p-6 text-center">
+        <p class="text-lg font-semibold text-gray-900">No results posted yet</p>
+        <p class="text-sm text-gray-500 mt-1">This page checks for new results automatically — leave it open.</p>
+        <div id="pending-message" class="text-sm text-gray-600 mt-4 text-left whitespace-pre-line hidden"></div>
+      </div>
+    </div>
+
     <div id="results-container" class="hidden space-y-4"></div>
+
+    <p id="archive-links" class="mt-8 text-xs text-gray-400">
+      Past elections: <a href="/?election=2026-06-primary" class="underline hover:text-gray-600">June 2026 Primary</a>
+    </p>
   </main>
 
   <!-- Floating sidebar nav -->
@@ -197,7 +214,14 @@
 </div>
 
 <script>
-const API_URL = '/api/results';
+// Certified results frozen in /archive — viewed with ?election=<key>
+const ARCHIVES = {
+  '2026-06-primary': '/archive/2026-06-primary.json',
+};
+const archiveKey = new URLSearchParams(location.search).get('election');
+const ARCHIVE_URL = ARCHIVES[archiveKey] || null;
+
+const API_URL = ARCHIVE_URL || '/api/results';
 const POLL_INTERVAL = 60;
 
 let currentData = null;
@@ -216,16 +240,22 @@ async function fetchData() {
     const data = await res.json();
     currentData = data;
     renderAll(data);
-    resetCountdown();
-    showState('results');
   } catch (err) {
-    if (!currentData) showState('error');
+    if (!currentData) {
+      showState('error');
+    } else {
+      // Keep showing the last good data, but say it may be out of date
+      const lu = document.getElementById('last-updated');
+      lu.textContent = `${lu.dataset.base || ''} · refresh failed, retrying`;
+      lu.className = 'text-amber-600';
+    }
     const isFileProtocol = location.protocol === 'file:';
     const msg = isFileProtocol
       ? 'Open via a local server (not file://) — run: python3 -m http.server 8080 in the project folder, then visit http://localhost:8080'
       : `${err.name}: ${err.message} | origin: ${location.origin}`;
     document.getElementById('error-message').textContent = msg;
   }
+  if (!ARCHIVE_URL) resetCountdown();
 }
 
 function resetCountdown() {
@@ -259,17 +289,22 @@ function showState(state) {
   document.getElementById('error-state').classList.toggle('flex', state === 'error');
   document.getElementById('empty-state').classList.toggle('hidden', state !== 'empty');
   document.getElementById('empty-state').classList.toggle('flex', state === 'empty');
+  document.getElementById('pending-state').classList.toggle('hidden', state !== 'pending');
+  document.getElementById('pending-state').classList.toggle('flex', state === 'pending');
   document.getElementById('results-container').classList.toggle('hidden', state !== 'results');
 }
 
 // ── Local vs statewide sort ───────────────────────────────────────────────────
 
 const STATEWIDE_KEYWORDS = [
-  'governor', 'lieutenant governor', 'secretary of state', 'controller',
-  'treasurer', 'attorney general', 'insurance commissioner', 'superintendent of public instruction',
+  'governor', 'lieutenant governor', 'secretary of state',
+  'attorney general', 'insurance commissioner', 'superintendent of public instruction',
   'board of equalization', 'us senate', 'u.s. senate', 'united states senate',
-  'state controller', 'state treasurer', 'state attorney',
+  'state controller', 'state treasurer', 'state attorney', 'proposition',
 ];
+
+// Matched only as the whole contest name, so county "Auditor-Controller" / "Treasurer-Tax Collector" stay local
+const STATEWIDE_EXACT = ['controller', 'treasurer'];
 
 // Races that cross county lines but aren't statewide
 const REGIONAL_KEYWORDS = [
@@ -278,11 +313,24 @@ const REGIONAL_KEYWORDS = [
   'judicial district', 'superior court', 'district attorney',
 ];
 
-function contestSortKey(item) {
-  const name = (item.name?.[0]?.text || '').toLowerCase();
+// contestGroupId → lowercase heading ("statewide contests", "local measures", …)
+let groupHeadings = {};
+
+function keywordTier(name) {
+  if (STATEWIDE_EXACT.includes(name.trim())) return 2;
   if (STATEWIDE_KEYWORDS.some(kw => name.includes(kw))) return 2;
   if (REGIONAL_KEYWORDS.some(kw => name.includes(kw))) return 1;
   return 0; // local
+}
+
+function contestSortKey(item) {
+  const name = (item.name?.[0]?.text || '').toLowerCase();
+  const kw = keywordTier(name);
+  // Prefer the county's own grouping when the election has one
+  const heading = groupHeadings[item.contestGroupId] || '';
+  if (heading.includes('local')) return 0;
+  if (heading.includes('statewide')) return kw === 1 ? 1 : 2;
+  return kw;
 }
 
 // ── Filter ───────────────────────────────────────────────────────────────────
@@ -306,6 +354,24 @@ document.getElementById('search-input').addEventListener('input', e => {
 function renderAll(data) {
   const { election, ballotItems } = data;
 
+  groupHeadings = {};
+  (election.contestGroups || []).forEach(g => {
+    groupHeadings[g.id] = (g.groupHeading?.[0]?.text || '').toLowerCase();
+  });
+
+  const electionName = election.name?.[0]?.text;
+  const dateText = election.dateText?.[0]?.text;
+  if (electionName) {
+    document.getElementById('election-subtitle').textContent = dateText ? `${dateText} · ${electionName}` : electionName;
+    document.title = `Nevada County Election Results — ${electionName}`;
+  }
+  document.getElementById('archive-banner').classList.toggle('hidden', !ARCHIVE_URL);
+  document.getElementById('archive-links').classList.toggle('hidden', !!ARCHIVE_URL);
+  if (ARCHIVE_URL) {
+    document.getElementById('countdown').classList.add('hidden');
+    document.getElementById('countdown-sep').classList.add('hidden');
+  }
+
   if (election.isOfficialResults) {
     document.getElementById('unofficial-banner').classList.add('hidden');
     document.getElementById('official-banner').classList.remove('hidden');
@@ -315,13 +381,31 @@ function renderAll(data) {
   }
 
   const lu = document.getElementById('last-updated');
-  if (election.lastUpdated) {
+  lu.className = 'text-gray-400';
+  lu.dataset.base = '';
+  if (election.lastUpdated && ballotItems?.length) {
     const d = new Date(election.lastUpdated);
-    lu.textContent = `Updated ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    const sameDay = d.toDateString() === new Date().toDateString();
+    const when = sameDay
+      ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    lu.dataset.base = `Updated ${when}`;
   }
+  lu.textContent = lu.dataset.base || 'Awaiting first results';
 
   renderSummary(election);
+  renderPendingMessage(election);
   renderContests(ballotItems);
+}
+
+// County's posted notice (HTML) → plain text, so nothing from upstream runs as markup
+function renderPendingMessage(election) {
+  const el = document.getElementById('pending-message');
+  const html = election.customPublicMessages?.[0]?.text?.[0]?.text || '';
+  const doc = new DOMParser().parseFromString(html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n'), 'text/html');
+  const text = (doc.body.textContent || '').replace(/ /g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  el.textContent = text;
+  el.classList.toggle('hidden', !text);
 }
 
 function renderSummary(election) {
@@ -342,11 +426,13 @@ function renderSummary(election) {
 
   const statusLabel = s => {
     if (!s) return '—';
-    const t = (s.reportingStatus || '').toLowerCase();
+    // API sends e.g. "reporting-status-fully-reported"
+    const raw = s.reportingStatusClientTextKey || s.reportingStatus || '';
+    const t = raw.toLowerCase();
     if (t.includes('fully')) return 'Fully Reported';
     if (t.includes('partial')) return 'Partial';
     if (t.includes('not')) return 'Not Started';
-    return s.reportingStatus || '—';
+    return raw || '—';
   };
 
   if (vbm || inperson) {
@@ -362,6 +448,13 @@ function contestAnchorId(item) {
 
 function renderContests(ballotItems) {
   if (!ballotItems) return;
+
+  if (ballotItems.length === 0) {
+    showState('pending');
+    document.getElementById('race-nav').style.display = 'none';
+    document.getElementById('mobile-nav-hint').textContent = 'No races posted yet';
+    return;
+  }
 
   let items = [...ballotItems];
 
@@ -382,7 +475,7 @@ function renderContests(ballotItems) {
 
   if (items.length === 0) {
     showState('empty');
-    document.getElementById('race-nav').classList.add('hidden');
+    document.getElementById('race-nav').style.display = 'none';
     return;
   }
 
@@ -426,7 +519,7 @@ function renderNav(items) {
   const nav = document.getElementById('race-nav');
   document.getElementById('race-nav-links').innerHTML = buildNavHtml(items, false);
   document.getElementById('race-nav-links-mobile').innerHTML = buildNavHtml(items, true);
-  nav.classList.remove('hidden');
+  nav.style.display = '';
 
   const hint = document.getElementById('mobile-nav-hint');
   if (hint) hint.textContent = `${items.length} race${items.length !== 1 ? 's' : ''}`;
@@ -456,6 +549,27 @@ function closeMobileNav() {
   }, 300);
 }
 
+// ── Measure pass thresholds ──────────────────────────────────────────────────
+// Confirmed from county measure notices; keyed by election slug, then measure letter
+const MEASURE_THRESHOLDS = {
+  '2026StatewidePrimary': { H: 55, J: 55 },
+  '2026StatewideGeneral': { M: 55, P: 55, Q: 50 },
+};
+
+function measureThreshold(item) {
+  const name = item.name?.[0]?.text || '';
+  const letter = (name.match(/^measure\s+([a-z]{1,2})\b/i) || [])[1]?.toUpperCase();
+  const known = MEASURE_THRESHOLDS[item.publishPublicElectionId]?.[letter];
+  if (known) return known;
+  if (contestSortKey(item) === 2) return 50; // state propositions
+  // Local fallback: school bonds 55% (Prop 39), other bonds and special/parcel taxes 2/3
+  const text = (item.referendum?.[0]?.text || '').toLowerCase();
+  const isBond = text.includes('bond') || text.includes('general obligation');
+  if (isBond && /school|college|education/.test(text)) return 55;
+  if (isBond || text.includes('parcel tax') || text.includes('special tax')) return 66.67;
+  return 50;
+}
+
 function renderContest(item) {
   const name = item.name?.[0]?.text || 'Unknown Contest';
   const isMeasure = item.contestType === 'BallotMeasure';
@@ -480,10 +594,7 @@ function renderContest(item) {
   const visible = sorted.filter(o => (o.voteCount || 0) > 0);
   const hidden = sorted.filter(o => (o.voteCount || 0) === 0);
 
-  // Bond measure: 66.67% threshold
-  const referendumText = (item.referendum?.[0]?.text || '').toLowerCase();
-  const isBond = referendumText.includes('bond') || referendumText.includes('general obligation');
-  const threshold = isBond ? 66.67 : 50;
+  const threshold = isMeasure ? measureThreshold(item) : null;
 
   const renderBar = (opt) => {
     const votes = opt.voteCount || 0;
@@ -510,7 +621,7 @@ function renderContest(item) {
           <span class="text-sm font-bold text-gray-700 ml-2 tabular-nums">${pct.toFixed(1)}%</span>
         </div>
         <div class="relative h-6 bg-gray-100 rounded-full overflow-hidden">
-          ${isMeasure && threshold === 66.67 ? `<div class="threshold-line" data-label="66.7%" style="left:${threshold}%"></div>` : isMeasure ? `<div class="threshold-line" data-label="50%" style="left:${threshold}%"></div>` : ''}
+          ${threshold ? `<div class="threshold-line" data-label="${threshold === 66.67 ? '66.7' : threshold}%" style="left:${threshold}%"></div>` : ''}
           <div class="bar-fill h-full rounded-full" style="width:${pct}%;background-color:${color};"></div>
         </div>
         <div class="text-xs text-gray-500 mt-1">${votes.toLocaleString()} votes</div>
@@ -534,7 +645,9 @@ function renderContest(item) {
 
   const tier = contestSortKey(item);
   const contestTypeTag = isMeasure
-    ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Measure</span>`
+    ? tier === 2
+      ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">State Prop</span>`
+      : `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Measure</span>`
     : tier === 0
       ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">Local</span>`
       : tier === 1
@@ -588,8 +701,10 @@ function escHtml(str) {
 
 showState('loading');
 fetchData();
-startPolling();
-updateCountdown();
+if (!ARCHIVE_URL) {
+  startPolling();
+  updateCountdown();
+}
 </script>
 </body>
 </html>

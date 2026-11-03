@@ -2,7 +2,7 @@ from http.server import BaseHTTPRequestHandler
 import urllib.request
 import json
 
-UPSTREAM = "https://app.enhancedvoting.com/results/public/api/elections/nevada-county-ca/2026StatewidePrimary/data"
+UPSTREAM = "https://app.enhancedvoting.com/results/public/api/elections/nevada-county-ca/2026StatewideGeneral/data"
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -13,10 +13,13 @@ class handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
+            # Let Vercel's edge share one upstream fetch across all viewers
+            self.send_header("Cache-Control", "public, s-maxage=30, stale-while-revalidate=60")
             self.end_headers()
             self.wfile.write(body)
         except Exception as e:
             self.send_response(502)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode())

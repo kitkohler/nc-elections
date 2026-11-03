@@ -11,7 +11,7 @@ import json
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-API_URL = "https://app.enhancedvoting.com/results/public/api/elections/nevada-county-ca/2026StatewidePrimary/data"
+API_URL = "https://app.enhancedvoting.com/results/public/api/elections/nevada-county-ca/2026StatewideGeneral/data"
 BLOCKED_HEADERS = {"cross-origin-resource-policy", "cross-origin-opener-policy", "cross-origin-embedder-policy"}
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -40,6 +40,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # suppress per-request logs
 
-with http.server.HTTPServer(("", 8080), Handler) as httpd:
-    print("Election dashboard: http://localhost:8080")
+PORT = int(os.environ.get("PORT", 8080))
+
+with http.server.HTTPServer(("", PORT), Handler) as httpd:
+    print(f"Election dashboard: http://localhost:{PORT}")
     httpd.serve_forever()
