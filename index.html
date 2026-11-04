@@ -131,6 +131,12 @@
       <button onclick="setFilter('all')" id="btn-all" class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white">All</button>
       <button onclick="setFilter('Candidate')" id="btn-Candidate" class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50">Candidate Races</button>
       <button onclick="setFilter('BallotMeasure')" id="btn-BallotMeasure" class="filter-btn px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50">Ballot Measures</button>
+      <button onclick="toggleLocalOnly()" id="btn-local-only" role="switch" aria-checked="false" class="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50">
+        <span id="local-only-track" class="relative inline-block w-8 h-4 rounded-full bg-gray-300 transition-colors">
+          <span id="local-only-knob" class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform"></span>
+        </span>
+        Nevada County races only
+      </button>
     </div>
   </div>
 </div>
@@ -421,6 +427,26 @@ function setFilter(f) {
   if (currentData) renderContests(currentData.ballotItems);
 }
 
+// Remembered per browser; works alongside the filter buttons and search
+const LOCAL_ONLY_KEY = 'nc-elections-local-only';
+let localOnly = false;
+try { localOnly = localStorage.getItem(LOCAL_ONLY_KEY) === '1'; } catch {}
+
+function updateLocalOnlyToggle() {
+  document.getElementById('btn-local-only').setAttribute('aria-checked', String(localOnly));
+  const track = document.getElementById('local-only-track');
+  track.classList.toggle('bg-blue-600', localOnly);
+  track.classList.toggle('bg-gray-300', !localOnly);
+  document.getElementById('local-only-knob').classList.toggle('translate-x-4', localOnly);
+}
+
+function toggleLocalOnly() {
+  localOnly = !localOnly;
+  try { localStorage.setItem(LOCAL_ONLY_KEY, localOnly ? '1' : '0'); } catch {}
+  updateLocalOnlyToggle();
+  if (currentData) renderContests(currentData.ballotItems);
+}
+
 document.getElementById('search-input').addEventListener('input', e => {
   currentSearch = e.target.value.toLowerCase();
   if (currentData) renderContests(currentData.ballotItems);
@@ -532,6 +558,10 @@ function renderContests(ballotItems) {
     items = items.filter(item =>
       (item.name?.[0]?.text || '').toLowerCase().includes(currentSearch)
     );
+  }
+
+  if (localOnly) {
+    items = items.filter(item => contestSortKey(item) === 0);
   }
 
   // Local races first, statewide last (stable sort preserves API order within each tier)
@@ -835,6 +865,7 @@ function escHtml(str) {
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 showState('loading');
+updateLocalOnlyToggle();
 fetchData();
 showAboutOnFirstVisit();
 if (!ARCHIVE_URL) {
