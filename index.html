@@ -707,7 +707,12 @@ function renderContest(item) {
     ? `${units} of ${total} ${crossCounty ? 'county ' : ''}precinct${total !== 1 ? 's' : ''} reporting`
     : 'Precinct data unavailable';
 
-  const allReporting = total > 0 && units >= total;
+  // A precinct can count as "reporting" with ballots still uncounted ("Election Night Complete"),
+  // so only the county's fully-reported tally means a contest is done
+  const fullyReported = reporting?.reportingStatusDetails
+    ?.find(d => d.reportingStatusClientTextKey === 'reporting-status-fully-reported')?.value ?? 0;
+  const allReporting = total > 0 && fullyReported >= total;
+  const stillCounting = total > 0 && units >= total && !allReporting;
 
   // Sort candidates by vote count desc
   const sorted = [...options].sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0));
@@ -767,7 +772,11 @@ function renderContest(item) {
   ` : '';
 
   const tier = contestSortKey(item);
-  const contestTypeTag = isMeasure
+  // The county files judge retention votes as Yes/No measures
+  const isJudge = isMeasure && /justice|judge/i.test(name);
+  const contestTypeTag = isJudge
+    ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Judge</span>`
+    : isMeasure
     ? tier === 2
       ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">State Prop</span>`
       : `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Measure</span>`
@@ -779,7 +788,9 @@ function renderContest(item) {
 
   const reportingBadge = allReporting
     ? `<span class="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">All ${crossCounty ? 'county ' : ''}precincts in</span>`
-    : `<span class="text-xs text-gray-500">${escHtml(precinctText)}</span>`;
+    : stillCounting
+      ? `<span class="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Counting continues</span>`
+      : `<span class="text-xs text-gray-500">${escHtml(precinctText)}</span>`;
 
   return `
     <div id="${anchor}" class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden scroll-mt-20">
