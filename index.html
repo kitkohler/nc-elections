@@ -219,6 +219,13 @@
       </button>
     </div>
     <div class="mt-3 space-y-3 text-sm text-gray-600 leading-relaxed">
+      <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900">
+        <p class="font-semibold">Nevada County results ONLY</p>
+        <p class="mt-1">
+          Every number here counts only votes cast in Nevada County. In statewide and district races, like Congress or
+          state propositions, someone leading here may not be leading overall. Those races are flagged.
+        </p>
+      </div>
       <p>
         This is an independent, unofficial page. I built it because I wanted an easier way to keep track of
         local races, with Nevada County contests up top and statewide ones below.
@@ -227,11 +234,6 @@
         <span class="font-semibold text-gray-800">Where the numbers come from:</span> every vote count is pulled
         straight from the Nevada County Elections Office's public results feed and checked once a minute.
         Nothing is added, estimated, or projected. If a number here ever disagrees with the county, the county is right.
-      </p>
-      <p>
-        <span class="font-semibold text-gray-800">Nevada County votes only:</span> for races that reach beyond the county,
-        like Congress, statewide offices, and state propositions, this page shows just the Nevada County share. Someone
-        leading here may not be leading overall. Those races are labeled, with a link to the Secretary of State's full results.
       </p>
       <p>
         <span class="font-semibold text-gray-800">What I add:</span> the layout, the local / regional / statewide
@@ -244,6 +246,9 @@
       <div class="pt-1 flex flex-col gap-1.5">
         <a data-official-link href="#" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Official results from the county →</a>
         <a href="https://www.nevadacountyca.gov/4148/Elections-Registrar-of-Voters" target="_blank" rel="noopener" class="text-blue-600 hover:underline">Nevada County Elections Office →</a>
+      </div>
+      <div class="sticky bottom-0 -mx-5 -mb-5 px-5 py-3 bg-white border-t border-gray-100">
+        <button onclick="closeAbout()" class="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700">Got it</button>
       </div>
     </div>
   </div>
@@ -541,7 +546,7 @@ function renderContests(ballotItems) {
   }
 
   showState('results');
-  container.innerHTML = `<p class="text-sm text-gray-500">All vote counts on this page are from Nevada County voters only. In races that extend beyond the county, the overall result can be different.</p>`
+  container.innerHTML = `<p class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900"><span class="font-semibold">Nevada County results ONLY.</span> Every number here counts only votes cast in Nevada County. In statewide and district races, the overall result may be different.</p>`
     + items.map(item => renderContest(item)).join('');
   renderNav(items);
 }
@@ -657,8 +662,13 @@ function crossCountyNote(item) {
   const link = tier > 0
     ? ` <a href="${SOS_RESULTS_URL}" target="_blank" rel="noopener" class="underline">Full results</a>`
     : '';
-  return `<p class="text-xs text-amber-700 mt-1">Nevada County votes only, not the ${scope} result.${link}</p>`;
+  return `<div class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
+    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-900">Nevada County results ONLY</span>
+    <span class="text-xs text-amber-800">Not the ${scope} result.${link}</span>
+  </div>`;
 }
+
+const ABOUT_SEEN_KEY = 'nc-elections-about-seen';
 
 function openAbout() {
   document.getElementById('about-overlay').classList.remove('hidden');
@@ -668,6 +678,14 @@ function openAbout() {
 function closeAbout() {
   document.getElementById('about-overlay').classList.add('hidden');
   document.body.style.overflow = '';
+  try { localStorage.setItem(ABOUT_SEEN_KEY, '1'); } catch {}
+}
+
+// Show the panel once per browser, on the first visit
+function showAboutOnFirstVisit() {
+  try {
+    if (!localStorage.getItem(ABOUT_SEEN_KEY)) openAbout();
+  } catch {}
 }
 
 document.addEventListener('keydown', e => {
@@ -807,6 +825,7 @@ function escHtml(str) {
 
 showState('loading');
 fetchData();
+showAboutOnFirstVisit();
 if (!ARCHIVE_URL) {
   startPolling();
   updateCountdown();
