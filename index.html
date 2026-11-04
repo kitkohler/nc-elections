@@ -164,8 +164,21 @@
     <div id="pending-state" class="hidden flex-col items-center justify-center py-16 px-4">
       <div class="max-w-xl w-full bg-white border border-gray-200 rounded-xl shadow-sm p-6 text-center">
         <p class="text-lg font-semibold text-gray-900">No results posted yet</p>
-        <p class="text-sm text-gray-500 mt-1">This page checks for new results automatically — leave it open.</p>
-        <div id="pending-message" class="text-sm text-gray-600 mt-4 text-left whitespace-pre-line hidden"></div>
+        <div class="text-sm text-gray-600 mt-4 text-left space-y-3 leading-relaxed">
+          <p>
+            This page checks the county's results feed once a minute and updates itself, so you can leave it open.
+            New numbers will appear here shortly after the county publishes them.
+          </p>
+          <p>
+            <span class="font-semibold text-gray-800">When to expect updates:</span> the Registrar of Voters says the
+            first results will come after 8pm on election night, then every two hours until all polling places
+            have reported. After that, the county plans updates on Tuesdays and Fridays at 4:30pm until certification.
+          </p>
+          <p>
+            Statewide races and races that cross county lines may show up later. The county holds those until polls
+            have closed in every county.
+          </p>
+        </div>
       </div>
     </div>
 
@@ -448,18 +461,7 @@ function renderAll(data) {
   lu.textContent = lu.dataset.base || 'Awaiting first results';
 
   renderSummary(election);
-  renderPendingMessage(election);
   renderContests(ballotItems);
-}
-
-// County's posted notice (HTML) → plain text, so nothing from upstream runs as markup
-function renderPendingMessage(election) {
-  const el = document.getElementById('pending-message');
-  const html = election.customPublicMessages?.[0]?.text?.[0]?.text || '';
-  const doc = new DOMParser().parseFromString(html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n'), 'text/html');
-  const text = (doc.body.textContent || '').replace(/ /g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-  el.textContent = text;
-  el.classList.toggle('hidden', !text);
 }
 
 function renderSummary(election) {
