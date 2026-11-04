@@ -229,6 +229,11 @@
         Nothing is added, estimated, or projected. If a number here ever disagrees with the county, the county is right.
       </p>
       <p>
+        <span class="font-semibold text-gray-800">Nevada County votes only:</span> for races that reach beyond the county,
+        like Congress, statewide offices, and state propositions, this page shows just the Nevada County share. Someone
+        leading here may not be leading overall. Those races are labeled, with a link to the Secretary of State's full results.
+      </p>
+      <p>
         <span class="font-semibold text-gray-800">What I add:</span> the layout, the local / regional / statewide
         sorting, and the pass-line on measures (50%, 55% for school bonds, or two-thirds). "Leading" just means
         most votes so far. Results stay unofficial until the county certifies them.
@@ -536,7 +541,8 @@ function renderContests(ballotItems) {
   }
 
   showState('results');
-  container.innerHTML = items.map(item => renderContest(item)).join('');
+  container.innerHTML = `<p class="text-sm text-gray-500">All vote counts on this page are from Nevada County voters only. In races that extend beyond the county, the overall result can be different.</p>`
+    + items.map(item => renderContest(item)).join('');
   renderNav(items);
 }
 
@@ -626,6 +632,34 @@ function measureThreshold(item) {
   return 50;
 }
 
+// ── Contests that reach beyond Nevada County ─────────────────────────────────
+// The feed only has this county's votes, and crossCounties comes back empty even for Congress
+const CROSS_COUNTY_LOCAL = {
+  '2026StatewidePrimary': ['Placer County Superintendent of Schools'],
+  '2026StatewideGeneral': ['Measure P'],
+};
+
+const SOS_RESULTS_URL = ARCHIVE_URL
+  ? 'https://www.sos.ca.gov/elections/prior-elections/statewide-election-results'
+  : 'https://electionresults.sos.ca.gov/';
+
+function isCrossCounty(item) {
+  const name = item.name?.[0]?.text || '';
+  if (/superior court|district attorney/i.test(name)) return false; // regional tier, but countywide
+  if (item.crossCounties?.length || contestSortKey(item) > 0) return true;
+  return (CROSS_COUNTY_LOCAL[item.publishPublicElectionId] || []).some(n => name.startsWith(n));
+}
+
+function crossCountyNote(item) {
+  const tier = contestSortKey(item);
+  const isDistrict = tier === 1 || /\bdistrict\b/i.test(item.name?.[0]?.text || ''); // e.g. Board of Equalization, District 1
+  const scope = tier === 0 ? 'full' : isDistrict ? 'district-wide' : 'statewide';
+  const link = tier > 0
+    ? ` <a href="${SOS_RESULTS_URL}" target="_blank" rel="noopener" class="underline">Full results</a>`
+    : '';
+  return `<p class="text-xs text-amber-700 mt-1">Nevada County votes only, not the ${scope} result.${link}</p>`;
+}
+
 function openAbout() {
   document.getElementById('about-overlay').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
@@ -646,12 +680,13 @@ function renderContest(item) {
   const options = item.summaryResults?.ballotOptions || [];
   const totalVotes = item.voteTotal || options.reduce((s, o) => s + (o.voteCount || 0), 0);
   const anchor = contestAnchorId(item);
+  const crossCounty = isCrossCounty(item);
 
   const reporting = item.reportingStatus;
   const units = reporting?.reportingUnits ?? 0;
   const total = reporting?.totalUnits ?? 0;
   const precinctText = total > 0
-    ? `${units} of ${total} precinct${total !== 1 ? 's' : ''} reporting`
+    ? `${units} of ${total} ${crossCounty ? 'county ' : ''}precinct${total !== 1 ? 's' : ''} reporting`
     : 'Precinct data unavailable';
 
   const allReporting = total > 0 && units >= total;
@@ -678,7 +713,7 @@ function renderContest(item) {
       ? `<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-800">✓ Winner</span>`
       : '';
     const leadBadge = (!isWinner && isLeader && sorted.length > 1)
-      ? `<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">Leading</span>`
+      ? `<span class="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">${crossCounty ? 'Leads in county' : 'Leading'}</span>`
       : '';
     const rowBg = isLeader ? 'bg-white rounded-lg p-3 border border-gray-100 shadow-sm' : 'bg-white rounded-lg p-3';
 
@@ -725,7 +760,7 @@ function renderContest(item) {
         : `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">Statewide</span>`;
 
   const reportingBadge = allReporting
-    ? `<span class="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">All precincts in</span>`
+    ? `<span class="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded">All ${crossCounty ? 'county ' : ''}precincts in</span>`
     : `<span class="text-xs text-gray-500">${escHtml(precinctText)}</span>`;
 
   return `
@@ -738,7 +773,8 @@ function renderContest(item) {
           </div>
           ${reportingBadge}
         </div>
-        ${totalVotes > 0 ? `<p class="text-xs text-gray-400 mt-1">${totalVotes.toLocaleString()} total votes</p>` : ''}
+        ${totalVotes > 0 ? `<p class="text-xs text-gray-400 mt-1">${totalVotes.toLocaleString()} ${crossCounty ? 'county votes' : 'total votes'}</p>` : ''}
+        ${crossCounty ? crossCountyNote(item) : ''}
       </div>
       <div class="px-4 py-4">
         ${visibleBarsHtml || '<p class="text-sm text-gray-400">No votes reported yet</p>'}
